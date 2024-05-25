@@ -1,65 +1,55 @@
+use clap::Parser;
+use config::{Config, File, FileFormat};
 use rust_fractal::renderer::FractalRenderer;
 use rust_fractal::util::RecolourExr;
-use clap::{crate_version, crate_name, crate_description, App, Arg};
-use config::{Config, File};
 
+#[derive(Parser)]
+#[command(version, about)]
+struct Opts {
+    #[clap(short, long, help = "Sets the location file to use")]
+    input: Option<String>,
 
-fn main() {
-    let matches = App::new(crate_name!())
-        .about(crate_description!())
-        .version(crate_version!())
-        .arg(
-            Arg::new("INPUT")
-                .value_name("FILE")
-                .about("Sets the location file to use")
-                .takes_value(true)
-                .required(false)
-        )
-        .arg(
-            Arg::new("options")
-                .short('o')
-                .long("options")
-                .value_name("FILE")
-                .about("Sets the options file to use")
-                .takes_value(true)
-                .required(false)
-        )
-        .arg(
-            Arg::new("palette")
-                .short('p')
-                .long("palette")
-                .value_name("FILE")
-                .about("Sets the palette file to use")
-                .takes_value(true)
-                .required(false)
-        )
-        .arg(
-            Arg::new("colour_exr")
-                .short('c')
-                .long("colour_exr")
-                .about("Colours the EXR files in the output directory")
-                .required(false)
-        ).get_matches();
+    #[clap(short = 'o', long, help = "Sets the options file to use")]
+    options: Option<String>,
 
-    let mut settings = Config::default();
+    #[clap(short = 'p', long, help = "Sets the palette file to use")]
+    palette: Option<String>,
 
-    if let Some(p) = matches.value_of("options") {
-        settings.merge(File::with_name(p).required(true)).unwrap();
+    #[clap(
+        short = 'c',
+        long,
+        help = "Colours the EXR files in the output directory"
+    )]
+    colour_exr: bool,
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let opts: Opts = Opts::parse();
+
+    let mut builder = Config::builder();
+
+    if let Some(o) = opts.options {
+        builder = builder.add_source(File::new(&o, FileFormat::Toml).required(true));
     };
 
-    if let Some(p) = matches.value_of("palette") {
-        settings.merge(File::with_name(p).required(true)).unwrap();
+    if let Some(p) = opts.palette {
+        builder = builder.add_source(File::new(&p, FileFormat::Toml).required(true));
     };
 
-    if let Some(l) = matches.value_of("INPUT") {
-        settings.merge(File::with_name(l).required(true)).unwrap();
+    if let Some(l) = opts.input {
+        builder = builder.add_source(File::with_name(&l).required(true));
     };
 
-    if matches.is_present("colour_exr") {
+    let settings = builder.build()?;
+
+    if opts.colour_exr {
         let colouring = RecolourExr::new(settings);
         colouring.colour();
     } else {
         let mut renderer = FractalRenderer::new(settings);
         renderer.render();
     }
+
+    Ok(())
+
 }

@@ -1,4 +1,4 @@
-use exr::prelude::simple_image::*;
+use exr::prelude::*;
 use rayon::prelude::*;
 use config::Config;
 
@@ -20,9 +20,10 @@ impl RecolourExr {
     pub fn new(settings: Config) -> Self {
         let (_, palette_buffer) = if let Ok(colour_values) = settings.get_array("palette") {
             let mut colors = colour_values.chunks_exact(3).map(|value| {
-                Color::from_rgb_u8(value[0].clone().into_int().unwrap() as u8, 
+                Color::from_rgba8(value[0].clone().into_int().unwrap() as u8, 
                     value[1].clone().into_int().unwrap() as u8, 
-                    value[2].clone().into_int().unwrap() as u8)
+                    value[2].clone().into_int().unwrap() as u8,
+                    255)
             }).collect::<Vec<Color>>();
 
             if colors[0] != *colors.last().unwrap() {
@@ -78,22 +79,34 @@ impl RecolourExr {
 
         (&self.files).into_par_iter()
         .for_each(|exr_file| {
-            let raw_data = Image::read_from_file(&exr_file, read_options::high()).unwrap();
+            let raw_data = read_all_data_from_file(&exr_file).unwrap();
 
             let mut iterations = Vec::new();
             let mut smooth = Vec::new();
 
-            for layer in &raw_data.layers {
-                for channel in &layer.channels {
-                    match &channel.samples {
-                        Samples::F16(f16_vec) => {
-                            smooth = f16_vec.clone();
-                        },
-                        Samples::F32(_) => {},
-                        Samples::U32(u32_vec) => {
-                            iterations = u32_vec.clone();
-                        }
-                    };
+            for layer in &raw_data.layer_data {
+                for channel in &layer.channel_data.list {
+                    match &channel.sample_data{
+                    Levels::Singular(samples) => {
+                        match samples {
+                            FlatSamples::F16(f16_vec) => {
+                                smooth = f16_vec.clone();
+                            },
+                            FlatSamples::F32(_) => {},
+                            FlatSamples::U32(u32_vec) => {
+                                iterations = u32_vec.clone();
+                            }
+                        };
+                    },
+                    Levels::Mip { level_data, .. } => {
+                        // Handle Mip levels if necessary
+                        println!("Mip levels: {:?}", level_data);
+                    },
+                    Levels::Rip { level_data, .. } => {
+                        // Handle Rip levels if necessary
+                        println!("Rip levels: {:?}", level_data);
+                    },
+                }
                 }
             }
 
@@ -121,7 +134,7 @@ impl RecolourExr {
 
                     let frac = temp.fract() as f64;
 
-                    let (r, g, b, _) = self.palette_buffer[pos1].interpolate_rgb(&self.palette_buffer[pos2], frac).rgba_u8();
+                    let (r, g, b, _) = self.palette_buffer[pos1].interpolate_rgb(&self.palette_buffer[pos2], frac).to_linear_rgba_u8();
 
                     rgb_buffer[3 * i] = r; 
                     rgb_buffer[3 * i + 1] = g; 

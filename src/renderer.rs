@@ -60,9 +60,9 @@ impl FractalRenderer {
         let rotate = settings.get_float("rotate").unwrap_or(0.0).to_radians();
         let maximum_iteration = settings.get_int("iterations").unwrap_or(1000) as usize;
 
-        let initial_zoom = settings.get_str("zoom").unwrap_or_else(|_| String::from("1E0")).to_ascii_uppercase();
-        let center_real = settings.get_str("real").unwrap_or_else(|_| String::from("-0.75"));
-        let center_imag = settings.get_str("imag").unwrap_or_else(|_| String::from("0.0"));
+        let initial_zoom = settings.get_string("zoom").unwrap_or_else(|_| String::from("1E0")).to_ascii_uppercase();
+        let center_real = settings.get_string("real").unwrap_or_else(|_| String::from("-0.75"));
+        let center_imag = settings.get_string("imag").unwrap_or_else(|_| String::from("0.0"));
 
         let approximation_order = settings.get_int("approximation_order").unwrap_or(0) as usize;
         let glitch_percentage = settings.get_float("glitch_percentage").unwrap_or(0.001);
@@ -110,7 +110,7 @@ impl FractalRenderer {
         let jitter_factor = settings.get_float("jitter_factor").unwrap_or(0.2);
         let show_output = settings.get_bool("show_output").unwrap_or(true);
         
-        let export_type = match settings.get_str("export").unwrap_or_else(|_| String::from("COLOUR")).to_ascii_uppercase().as_ref() {
+        let export_type = match settings.get_string("export").unwrap_or_else(|_| String::from("COLOUR")).to_ascii_uppercase().as_ref() {
             "GUI" => ExportType::Gui,
             "RAW" | "EXR" => ExportType::Raw,
             "BOTH" => ExportType::Both,
@@ -119,9 +119,11 @@ impl FractalRenderer {
 
         let (palette_buffer, palette_interpolated_buffer) = if let Ok(colour_values) = settings.get_array("palette") {
             let mut colors = colour_values.chunks_exact(3).map(|value| {
-                Color::from_rgb_u8(value[0].clone().into_int().unwrap() as u8, 
+                Color::from_rgba8(value[0].clone().into_int().unwrap() as u8, 
                     value[1].clone().into_int().unwrap() as u8, 
-                    value[2].clone().into_int().unwrap() as u8)
+                    value[2].clone().into_int().unwrap() as u8,
+                    255
+                )
             }).collect::<Vec<Color>>();
 
             if colors[0] != *colors.last().unwrap() {
@@ -833,9 +835,9 @@ impl FractalRenderer {
         self.image_height = settings.get_int("image_height").unwrap_or(1000) as usize;
         self.rotate = settings.get_float("rotate").unwrap_or(0.0).to_radians();
         self.maximum_iteration = settings.get_int("iterations").unwrap_or(1000) as usize;
-        let initial_zoom = settings.get_str("zoom").unwrap_or_else(|_| String::from("1E0")).to_ascii_uppercase();
-        let center_real = settings.get_str("real").unwrap_or_else(|_| String::from("-0.75"));
-        let center_imag = settings.get_str("imag").unwrap_or_else(|_| String::from("0.0"));
+        let initial_zoom = settings.get_string("zoom").unwrap_or_else(|_| String::from("1E0")).to_ascii_uppercase();
+        let center_real = settings.get_string("real").unwrap_or_else(|_| String::from("-0.75"));
+        let center_imag = settings.get_string("imag").unwrap_or_else(|_| String::from("0.0"));
         let approximation_order = settings.get_int("approximation_order").unwrap_or(0) as usize;
         self.glitch_percentage = settings.get_float("glitch_percentage").unwrap_or(0.001);
         self.remaining_frames = settings.get_int("frames").unwrap_or(1) as usize;

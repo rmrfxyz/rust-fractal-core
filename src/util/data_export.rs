@@ -1,18 +1,18 @@
-use crate::util::{PixelData, FloatExtended, ComplexFixed, FractalType};
 use crate::math::Reference;
+use crate::util::{ComplexFixed, FloatExtended, FractalType, PixelData};
 
 use std::{collections::HashMap, f64::consts::LN_2};
 // use std::cmp::{min, max};
-use std::f32::consts::{FRAC_PI_4};
+use std::f32::consts::FRAC_PI_4;
 
-use exr::{prelude::simple_image};
-use colorgrad::{Color, CustomGradient, Interpolation, BlendMode};
+use exr::prelude::*;
+
+use colorgrad::{BlendMode, Color, CustomGradient, Interpolation};
 
 // This is 1e16f32.ln().log2() + 1.0
 const ESCAPE_RADIUS_LN_LOG2_P1: f32 = 5.203254472696 + 1.0;
 // const ESCAPE_RADIUS_LN_LOG2_P1: f32 = 7.203254472699 + 1.0;
 // const ESCAPE_RADIUS_LN_LOG2_P1: f32 = 8.2032544726997 + 1.0;
-
 
 // const ESCAPE_RADIUS_LN_LOG2_P1: f32 = 3.282888062227 + 1.0;
 // const ESCAPE_RADIUS_LN_LOG2_P1: f32 = 2.601627236349860 + 1.0;
@@ -22,7 +22,7 @@ pub enum ExportType {
     Color,
     Raw,
     Both,
-    Gui
+    Gui,
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -31,16 +31,16 @@ pub enum ColoringType {
     StepIteration,
     Distance,
     DistanceStripe,
-    Stripe
+    Stripe,
 }
 
 #[derive(PartialEq, Clone, Copy)]
-pub enum DataType { 
+pub enum DataType {
     Iteration,
     Distance,
     Stripe,
     DistanceStripe,
-    AtomDomain
+    AtomDomain,
 }
 
 pub struct LightingParameters {
@@ -48,22 +48,40 @@ pub struct LightingParameters {
     pub specular: [f32; 4],
     pub shininess: i32,
     pub opacity: [f32; 2],
-    pub ambient: f32
+    pub ambient: f32,
 }
 
 impl LightingParameters {
-    pub fn new(direction: f32, azimuth: f32, opacity: f32, ambient: f32, diffuse: f32, specular: f32, shininess: i32) -> Self { 
+    pub fn new(
+        direction: f32,
+        azimuth: f32,
+        opacity: f32,
+        ambient: f32,
+        diffuse: f32,
+        specular: f32,
+        shininess: i32,
+    ) -> Self {
         let phi_half = FRAC_PI_4 + azimuth.to_radians() / 2.0;
         let direction = direction.to_radians();
         let azimuth = azimuth.to_radians();
 
         LightingParameters {
-            diffuse: [direction.cos() * azimuth.cos(), direction.sin() * azimuth.cos(), azimuth.sin(), diffuse],
-            specular: [direction.cos() * phi_half.sin(), direction.sin() * phi_half.sin(), phi_half.cos(), specular],
+            diffuse: [
+                direction.cos() * azimuth.cos(),
+                direction.sin() * azimuth.cos(),
+                azimuth.sin(),
+                diffuse,
+            ],
+            specular: [
+                direction.cos() * phi_half.sin(),
+                direction.sin() * phi_half.sin(),
+                phi_half.cos(),
+                specular,
+            ],
             shininess,
             opacity: [opacity, (1.0 - opacity) / 2.0],
-            ambient
-        } 
+            ambient,
+        }
     }
 }
 
@@ -97,23 +115,24 @@ pub struct DataExport {
 }
 
 impl DataExport {
-    pub fn new(image_width: usize, 
-        image_height: usize, 
-        display_glitches: bool, 
-        palette_buffer: Vec<Color>, 
-        palette_interpolated_buffer: Vec<Color>, 
+    pub fn new(
+        image_width: usize,
+        image_height: usize,
+        display_glitches: bool,
+        palette_buffer: Vec<Color>,
+        palette_interpolated_buffer: Vec<Color>,
         palette_cyclic: bool,
-        palette_iteration_span: f32, 
-        palette_offset: f32, 
-        distance_transition: f32, 
+        palette_iteration_span: f32,
+        palette_offset: f32,
+        distance_transition: f32,
         stripe_scale: f32,
         distance_color: bool,
         lighting: bool,
         coloring_type: ColoringType,
         data_type: DataType,
-        fractal_type: FractalType, 
-        export_type: ExportType) -> Self {
-
+        fractal_type: FractalType,
+        export_type: ExportType,
+    ) -> Self {
         // TODO maybe make the distance estimate arrays empty until required
         DataExport {
             image_width,
@@ -141,12 +160,22 @@ impl DataExport {
             lighting_parameters: LightingParameters::new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0),
             lighting,
             distance_color,
-            stripe_scale
+            stripe_scale,
         }
     }
 
     #[inline]
-    pub fn export_pixels<const DATA_TYPE: usize, const FRACTAL_TYPE: usize, const FRACTAL_POWER: usize>(&mut self, pixel_data: &[PixelData], reference: &Reference, delta_pixel: FloatExtended, scale: usize) {
+    pub fn export_pixels<
+        const DATA_TYPE: usize,
+        const FRACTAL_TYPE: usize,
+        const FRACTAL_POWER: usize,
+    >(
+        &mut self,
+        pixel_data: &[PixelData],
+        reference: &Reference,
+        delta_pixel: FloatExtended,
+        scale: usize,
+    ) {
         for pixel in pixel_data {
             let new_scale = if self.export_type == ExportType::Gui {
                 scale
@@ -160,7 +189,7 @@ impl DataExport {
             //     if self.display_glitches {
             //         self.set_with_scale::<DATA_TYPE>(pixel.index, [255, 0, 0], new_scale);
             //     };
-                
+
             //     continue;
             // }
 
@@ -175,18 +204,23 @@ impl DataExport {
             self.smooth[pixel.index] = ESCAPE_RADIUS_LN_LOG2_P1 - (pixel.z_norm.ln() as f32).log2();
 
             if DATA_TYPE == 2 || DATA_TYPE == 3 {
-                let temp = pixel.stripe_storage.iter().map(|z| {0.5 * (z.arg() as f32 * self.stripe_scale).sin() + 0.5}).collect::<Vec<f32>>();
+                let temp = pixel
+                    .stripe_storage
+                    .iter()
+                    .map(|z| 0.5 * (z.arg() as f32 * self.stripe_scale).sin() + 0.5)
+                    .collect::<Vec<f32>>();
 
-                self.stripe[pixel.index] = (
-                    temp[(pixel.stripe_iteration + 2) % 4] 
-                    + temp[(pixel.stripe_iteration + 3) % 4] 
-                    + temp[pixel.stripe_iteration] * self.smooth[pixel.index] 
-                    + temp[(pixel.stripe_iteration + 1) % 4] * (1.0 - self.smooth[pixel.index])) / 3.0;
+                self.stripe[pixel.index] = (temp[(pixel.stripe_iteration + 2) % 4]
+                    + temp[(pixel.stripe_iteration + 3) % 4]
+                    + temp[pixel.stripe_iteration] * self.smooth[pixel.index]
+                    + temp[(pixel.stripe_iteration + 1) % 4] * (1.0 - self.smooth[pixel.index]))
+                    / 3.0;
             }
 
             if DATA_TYPE == 1 || DATA_TYPE == 3 {
                 // This calculates the distance in terms of pixels
-                let temp1 = reference.reference_data_extended[pixel.reference_iteration] + pixel.delta_current;
+                let temp1 = reference.reference_data_extended[pixel.reference_iteration]
+                    + pixel.delta_current;
                 let temp2 = temp1.norm();
                 let temp3 = 2.0f64.powi(temp1.exponent - temp2.exponent) / temp2.mantissa;
 
@@ -208,7 +242,7 @@ impl DataExport {
 
                 let dex = norm_z_x * scaled_j_a.re + norm_z_y * scaled_j_b.re;
                 let dey = norm_z_x * scaled_j_a.im + norm_z_y * scaled_j_b.im;
-            
+
                 // TODO implement jacobian for scaling
 
                 let output = num / ComplexFixed::new(dex, dey);
@@ -225,15 +259,15 @@ impl DataExport {
         match self.export_type {
             ExportType::Color => {
                 self.save_colour(filename);
-            },
+            }
             ExportType::Raw => {
                 self.save_raw(filename, approximation_order, zoom);
-            },
+            }
             ExportType::Both => {
                 self.save_colour(filename);
                 self.save_raw(filename, approximation_order, zoom);
             }
-            _ => {},
+            _ => {}
         }
     }
 
@@ -243,11 +277,13 @@ impl DataExport {
             match extension {
                 "jpg" | "jpeg" | "png" => {
                     image::save_buffer(
-                        filename.to_owned(), 
-                        &self.buffer, 
-                        self.image_width as u32, 
-                        self.image_height as u32, 
-                        image::ColorType::Rgb8).unwrap();
+                        filename.to_owned(),
+                        &self.buffer,
+                        self.image_width as u32,
+                        self.image_height as u32,
+                        image::ColorType::Rgb8,
+                    )
+                    .unwrap();
 
                     return;
                 }
@@ -256,42 +292,70 @@ impl DataExport {
         }
 
         image::save_buffer(
-            filename.to_owned() + ".png", 
-            &self.buffer, 
-            self.image_width as u32, 
-            self.image_height as u32, 
-            image::ColorType::Rgb8).unwrap();
+            filename.to_owned() + ".png",
+            &self.buffer,
+            self.image_width as u32,
+            self.image_height as u32,
+            image::ColorType::Rgb8,
+        )
+        .unwrap();
     }
 
     pub fn save_raw(&mut self, filename: &str, approximation_order: usize, zoom: &str) {
-        let iterations = simple_image::Channel::non_color_data(simple_image::Text::from("N").unwrap(), simple_image::Samples::U32(self.iterations.clone()));
-        let smooth = simple_image::Channel::non_color_data(simple_image::Text::from("NF").unwrap(), simple_image::Samples::F32(self.smooth.clone()));
+        let iterations =
+            AnyChannel::new(Text::from("N"), FlatSamples::U32(self.iterations.clone()));
+        let smooth = AnyChannel::new(Text::from("NF"), FlatSamples::F32(self.smooth.clone()));
 
         let channels = if self.data_type == DataType::Distance {
-            let distance_x = simple_image::Channel::non_color_data(simple_image::Text::from("DEX").unwrap(), simple_image::Samples::F32(self.distance_x.clone()));
-            let distance_y = simple_image::Channel::non_color_data(simple_image::Text::from("DEY").unwrap(), simple_image::Samples::F32(self.distance_y.clone()));
+            let distance_x =
+                AnyChannel::new(Text::from("DEX"), FlatSamples::F32(self.distance_x.clone()));
+            let distance_y =
+                AnyChannel::new(Text::from("DEY"), FlatSamples::F32(self.distance_y.clone()));
 
             smallvec::smallvec![iterations, smooth, distance_x, distance_y]
         } else {
             smallvec::smallvec![iterations, smooth]
         };
 
-        let mut layer = simple_image::Layer::new(simple_image::Text::from("fractal_data").unwrap(), (self.image_width, self.image_height), channels)
-            .with_compression(simple_image::Compression::PXR24)
-            .with_block_format(None, simple_image::attribute::LineOrder::Increasing);   
+        // let mut layer = simple_image::Layer::new(
+        //     simple_image::Text::from("fractal_data").unwrap(),
+        //     (self.image_width, self.image_height),
+        //     channels,
+        // )
+        // .with_compression(simple_image::Compression::PXR24)
+        // .with_block_format(None, simple_image::attribute::LineOrder::Increasing);
+
+        let mut layer = Layer::new(
+            (self.image_width, self.image_height),
+            LayerAttributes::named("fractal_data"),
+            Encoding::SMALL_FAST_LOSSLESS,
+            AnyChannels::sort(channels),
+        );
 
         let mut attributes = HashMap::new();
-        attributes.insert(simple_image::Text::from("IterationsBias").unwrap(), exr::meta::attribute::AttributeValue::I32(0));
-        attributes.insert(simple_image::Text::from("Iterations").unwrap(), exr::meta::attribute::AttributeValue::I32(self.maximum_iteration as i32));
-        attributes.insert(simple_image::Text::from("Zoom").unwrap(), exr::meta::attribute::AttributeValue::Text(simple_image::Text::from(zoom).unwrap()));
-        attributes.insert(simple_image::Text::from("approximation_order").unwrap(), exr::meta::attribute::AttributeValue::I32(approximation_order as i32));
+        attributes.insert(
+            Text::from("IterationsBias"),
+            exr::meta::attribute::AttributeValue::I32(0),
+        );
+        attributes.insert(
+            Text::from("Iterations"),
+            exr::meta::attribute::AttributeValue::I32(self.maximum_iteration as i32),
+        );
+        attributes.insert(
+            Text::from("Zoom"),
+            exr::meta::attribute::AttributeValue::Text(Text::from(zoom)),
+        );
+        attributes.insert(
+            Text::from("approximation_order"),
+            exr::meta::attribute::AttributeValue::I32(approximation_order as i32),
+        );
 
-        layer.attributes = exr::meta::header::LayerAttributes::new(simple_image::Text::from("fractal_data").unwrap());
-        layer.attributes.custom = attributes;
+        layer.attributes = exr::meta::header::LayerAttributes::named(Text::from("fractal_data"));
+        layer.attributes.other = attributes;
 
-        let image = simple_image::Image::new_from_single_layer(layer);
+        let image = Image::from_layer(layer);
 
-        image.write_to_file(filename.to_owned() + ".exr", simple_image::write_options::high()).unwrap();
+        image.write().to_file(filename.to_owned() + ".exr").unwrap();
     }
 
     pub fn clear_buffers(&mut self) {
@@ -335,15 +399,24 @@ impl DataExport {
             // Blinn-phong from GPU mandelbrot
             let mut normal = ComplexFixed::new(self.distance_x[k], self.distance_y[k]);
             normal /= normal.norm();
-            
+
             // This is diffuse lighting
-            let light_diffuse = (normal.re * self.lighting_parameters.diffuse[0] + normal.im * self.lighting_parameters.diffuse[1] + self.lighting_parameters.diffuse[2]) / (1.0 + self.lighting_parameters.diffuse[2]);
+            let light_diffuse = (normal.re * self.lighting_parameters.diffuse[0]
+                + normal.im * self.lighting_parameters.diffuse[1]
+                + self.lighting_parameters.diffuse[2])
+                / (1.0 + self.lighting_parameters.diffuse[2]);
 
             // This is specular lighting
-            let light_specular = ((normal.re * self.lighting_parameters.specular[0] + normal.im * self.lighting_parameters.specular[1] + self.lighting_parameters.specular[2]) / (1.0 + self.lighting_parameters.specular[2])).powi(self.lighting_parameters.shininess);
+            let light_specular = ((normal.re * self.lighting_parameters.specular[0]
+                + normal.im * self.lighting_parameters.specular[1]
+                + self.lighting_parameters.specular[2])
+                / (1.0 + self.lighting_parameters.specular[2]))
+                .powi(self.lighting_parameters.shininess);
 
             // Ambient + diffuse + specular
-            let bright = self.lighting_parameters.ambient + self.lighting_parameters.diffuse[3] * light_diffuse + self.lighting_parameters.specular[3] * light_specular;
+            let bright = self.lighting_parameters.ambient
+                + self.lighting_parameters.diffuse[3] * light_diffuse
+                + self.lighting_parameters.specular[3] * light_specular;
 
             // Add intensity
             bright * self.lighting_parameters.opacity[0] - self.lighting_parameters.opacity[1]
@@ -357,24 +430,33 @@ impl DataExport {
         let pos1 = value.floor() as usize;
         let pos2 = (pos1 + 1) % self.palette_interpolated_buffer.len();
 
-        self.palette_interpolated_buffer[pos1].interpolate_rgb(&self.palette_interpolated_buffer[pos2], value.fract() as f64)
+        self.palette_interpolated_buffer[pos1].interpolate_rgb(
+            &self.palette_interpolated_buffer[pos2],
+            value.fract() as f64,
+        )
     }
 
     #[inline]
     pub fn calculate_iteration_palette_value(&self, k: usize) -> Color {
         let mut floating_iteration = self.iterations[k] as f32 / self.palette_iteration_span;
-               
+
         // TODO add as another option
         if self.coloring_type != ColoringType::StepIteration {
             floating_iteration += self.smooth[k] / self.palette_iteration_span
         };
-        
-        self.calculate_color(self.palette_interpolated_buffer.len() as f32 * (floating_iteration + self.palette_offset).fract())
+
+        self.calculate_color(
+            self.palette_interpolated_buffer.len() as f32
+                * (floating_iteration + self.palette_offset).fract(),
+        )
     }
 
     #[inline]
     pub fn calculate_distance_palette_value(&self, distance: f32) -> Color {
-        self.calculate_color(self.palette_interpolated_buffer.len() as f32 * (distance + self.palette_offset).fract())
+        self.calculate_color(
+            self.palette_interpolated_buffer.len() as f32
+                * (distance + self.palette_offset).fract(),
+        )
     }
 
     #[inline]
@@ -396,7 +478,7 @@ impl DataExport {
             }
         }
 
-        Color::from_rgb(rgb[0], rgb[1], rgb[2])
+        Color::new(rgb[0], rgb[1], rgb[2], 255.0)
     }
 
     #[inline]
@@ -413,22 +495,22 @@ impl DataExport {
                 } else {
                     self.calculate_iteration_palette_value(k)
                 };
-                
+
                 // DataExport::gamma_blend(color, bright)
 
                 let out = distance.tanh() as f64;
 
-                Color::from_rgb(out, out, out)
-            },
+                Color::new(out, out, out, 255.0)
+            }
             ColoringType::SmoothIteration | ColoringType::StepIteration => {
                 self.calculate_iteration_palette_value(k)
-            },
+            }
             ColoringType::Stripe => {
                 let color = self.calculate_iteration_palette_value(k);
                 let bright = self.stripe[k] as f64;
 
                 DataExport::gamma_blend(color, bright)
-            },
+            }
             ColoringType::DistanceStripe => {
                 let bright = self.calculate_blinn_phong(k);
 
@@ -459,19 +541,29 @@ impl DataExport {
             }
         };
 
-        let (r, g, b, _) = color.rgba_u8();
+        let rgba = color.to_rgba8();
 
-        self.set_with_scale::<DATA_TYPE>(k, [r, g, b], scale)
+        self.set_with_scale::<DATA_TYPE>(k, [rgba[0], rgba[1], rgba[2]], scale)
     }
 
     #[inline]
-    pub fn change_palette(&mut self, palette: Option<Vec<(u8, u8, u8)>>, palette_iteration_span: f32, palette_offset: f32, distance_transition: f32, distance_color: bool, cyclic: bool, lighting: bool) {
+    pub fn change_palette(
+        &mut self,
+        palette: Option<Vec<(u8, u8, u8)>>,
+        palette_iteration_span: f32,
+        palette_offset: f32,
+        distance_transition: f32,
+        distance_color: bool,
+        cyclic: bool,
+        lighting: bool,
+    ) {
         let mut new_palette = false;
-        
+
         if let Some(palette) = palette {
-            self.palette_buffer = palette.iter().map(|value| {
-                Color::from_rgb_u8(value.0, value.1, value.2)
-            }).collect::<Vec<Color>>();
+            self.palette_buffer = palette
+                .iter()
+                .map(|value| Color::from_rgba8(value.0, value.1, value.2, 255))
+                .collect::<Vec<Color>>();
 
             if self.palette_buffer[0] != *self.palette_buffer.last().unwrap() {
                 self.palette_buffer.push(self.palette_buffer[0].clone());
@@ -491,7 +583,8 @@ impl DataExport {
                 .colors(&self.palette_buffer[0..number_colors])
                 .interpolation(Interpolation::CatmullRom)
                 .mode(BlendMode::Oklab)
-                .build().unwrap();
+                .build()
+                .unwrap();
 
             self.palette_interpolated_buffer = palette_generator.colors(number_colors * 64);
         };
@@ -505,12 +598,28 @@ impl DataExport {
     }
 
     #[inline]
-    pub fn change_lighting(&mut self, direction: f32, azimuth: f32, opacity: f32, ambient: f32, diffuse: f32, specular: f32, shininess: i32) {
-        self.lighting_parameters = LightingParameters::new(direction, azimuth, opacity, ambient, diffuse, specular, shininess);
+    pub fn change_lighting(
+        &mut self,
+        direction: f32,
+        azimuth: f32,
+        opacity: f32,
+        ambient: f32,
+        diffuse: f32,
+        specular: f32,
+        shininess: i32,
+    ) {
+        self.lighting_parameters = LightingParameters::new(
+            direction, azimuth, opacity, ambient, diffuse, specular, shininess,
+        );
     }
 
     #[inline]
-    pub fn set_with_scale<const DATA_TYPE: usize>(&mut self, index: usize, value: [u8; 3], scale: usize) {
+    pub fn set_with_scale<const DATA_TYPE: usize>(
+        &mut self,
+        index: usize,
+        value: [u8; 3],
+        scale: usize,
+    ) {
         if scale > 1 {
             let image_x = index % self.image_width;
             let image_y = index / self.image_width;
@@ -543,7 +652,7 @@ impl DataExport {
                     if DATA_TYPE == 2 || DATA_TYPE == 3 {
                         self.stripe[scale_index] = self.stripe[index];
                     }
-                    
+
                     self.buffer[3 * (scale_index)] = value[0];
                     self.buffer[3 * (scale_index) + 1] = value[1];
                     self.buffer[3 * (scale_index) + 2] = value[2];

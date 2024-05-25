@@ -161,12 +161,12 @@ pub fn get_approximation_terms(approximation_order: usize, image_width: usize, i
 pub fn generate_default_palette() -> (Vec<Color>, Vec<Color>) {
     let palette_generator = CustomGradient::new()
         .colors(
-            &[Color::from_rgb_u8(0, 2, 0),
-            Color::from_rgb_u8(0, 7, 100), 
-            Color::from_rgb_u8(32, 107, 203), 
-            Color::from_rgb_u8(237, 255, 255),
-            Color::from_rgb_u8(255, 170, 0),
-            Color::from_rgb_u8(0, 2, 0)])
+            &[Color::from_rgba8(0, 2, 0, 255),
+            Color::from_rgba8(0, 7, 100, 255), 
+            Color::from_rgba8(32, 107, 203, 255), 
+            Color::from_rgba8(237, 255, 255, 255),
+            Color::from_rgba8(255, 170, 0, 255),
+            Color::from_rgba8(0, 2, 0, 255)])
             .domain(&[0.0, 0.1425, 0.3025, 0.5625, 0.785, 1.0])
             .interpolation(Interpolation::CatmullRom).mode(BlendMode::Oklab)
             .build().unwrap();
